@@ -21,7 +21,6 @@ userPositions = plotUserDistribution(params);
 rewards = zeros(params.Nep, length(params.Np), params.Nrun);
 t_episodesQL = zeros(params.Nep, length(params.Np), params.Nrun);
 nw_usedQL = zeros(params.Nep, length(params.Np), params.Nrun);
-lost_episodesQL = zeros(params.Nep, length(params.Np), params.Nrun);
 
 for npIndex = 1:length(params.Np) 
     
@@ -60,16 +59,15 @@ for npIndex = 1:length(params.Np)
         LostPackets_SIC(run, npIndex) = lost_SIC;
         
         % Resource assignment with QL (SIC)
-        [Q_SIC, t_QL_SIC_run, lost_QL_SIC_run, episode_rewards,t_episodes, nw_episodes, lost_episodes] = runResourceAssignmentWithQL(params, P, userPositions, true);
+        [Q_SIC, t_QL_SIC_run, lost_QL_SIC_run, episode_rewards,t_episodes, nw_episodes] = runResourceAssignmentWithQL(params, P, userPositions, true);
         T_QL_SIC(run, npIndex) = t_QL_SIC_run;
         LostPackets_QL_SIC(run, npIndex) = lost_QL_SIC_run;
         rewards(:, npIndex, run) = episode_rewards;
         t_episodesQL(:, npIndex, run) = t_episodes;
         nw_usedQL(:, npIndex, run) = nw_episodes;
-        lost_episodesQL(:, npIndex, run) = lost_episodes;
 
         % Resource assignment with QL (no SIC)
-        [Q_noSIC, t_QL_noSIC_run, lost_QL_noSIC_run, ~, ~, ~, ~] = runResourceAssignmentWithQL(params, P, userPositions, false);
+        [Q_noSIC, t_QL_noSIC_run, lost_QL_noSIC_run, ~, ~, ~] = runResourceAssignmentWithQL(params, P, userPositions, false);
         T_QL_noSIC(run, npIndex) = t_QL_noSIC_run;
         LostPackets_QL_noSIC(run, npIndex) = lost_QL_noSIC_run;
 
@@ -185,20 +183,6 @@ legend show;
 grid on;
 hold off;
 
-% Plot of packet loss in training
-figure;
-hold on;
-colors = lines(length(params.Np)); 
-for npIndex = 1:length(params.Np)
-    meanNW = mean(lost_episodesQL(:, npIndex, :), 3);
-    plot(1:params.Nep, meanNW, 'LineWidth', 2, 'Color', colors(npIndex, :), 'DisplayName', sprintf('Np = %d', params.Np(npIndex)));
-end
-xlabel('Episode');
-ylabel('Packets Lost %');
-title('Packets Lost During Training');
-legend show;
-grid on;
-hold off;
 
 % Plot epsilon
 
@@ -301,7 +285,7 @@ function params = initParams()
     params.beta = 0.00000005; % SNIR threshold
     params.Np = [10,20,30,40,50]; % number of packets
     params.Nmax = 5; 
-    params.Nrun = 5000; % number of iterations of each simulation
+    params.Nrun = 2000; % number of iterations of each simulation
 
     % QL
     params.Nep = 1000; % number of episodes in training
@@ -316,7 +300,7 @@ function params = initParams()
     params.epsilon_decay = exp(log(params.epsilon_end / params.epsilon_start) / (params.Nep));
     
 
-    params.delta = 0.3; % 0.1, 0.3, 0.9 (cost factor)
+    params.delta = 0.9; % 0.1, 0.3, 0.9 (cost factor)
 
 end
 
@@ -431,7 +415,7 @@ end
 
 %% Resource Assignment with QL (SIC & no-SIC)
 
-function [Q, t_QL, lost_QL,episode_rewards, t_episodes, nw_episodes, lost_episodes] = runResourceAssignmentWithQL(params, P_original, userPositions, useSIC)
+function [Q, t_QL, lost_QL,episode_rewards, t_episodes, nw_episodes] = runResourceAssignmentWithQL(params, P_original, userPositions, useSIC)
     maxNpIndex = params.Np(end);
     maxNwIndex = params.Nw;
     Nactions = 3;
@@ -448,18 +432,17 @@ function [Q, t_QL, lost_QL,episode_rewards, t_episodes, nw_episodes, lost_episod
     episode_rewards = zeros(params.Nep, 1);
     t_episodes = zeros(params.Nep, 1);
     nw_episodes = zeros(params.Nep, 1);
-    lost_episodes = zeros(params.Nep, 1);
 
     % Run episodes of Q-learning
     for iep = 1:params.Nep
         
         %Epsilon 1
-        epsilon = max(params.epsilon_end, params.epsilon_start * params.epsilon_decay ^ iep);
+        %epsilon = max(params.epsilon_end, params.epsilon_start * params.epsilon_decay ^ iep);
 
         %Epsilon 2
-        %steepness = 10;  
-        %midpoint = params.Nep / 1.8;  
-        %epsilon = 1 / (1 + exp(steepness * (iep - midpoint) / params.Nep));
+        steepness = 10;  
+        midpoint = params.Nep / 1.8;  
+        epsilon = 1 / (1 + exp(steepness * (iep - midpoint) / params.Nep));
 
         %Epsilon 3
         %epsilon = params.epsilon_start - (params.epsilon_start - params.epsilon_end) * (iep - 1) / (params.Nep - 1);
@@ -470,7 +453,6 @@ function [Q, t_QL, lost_QL,episode_rewards, t_episodes, nw_episodes, lost_episod
         % Initial state
         nw = 1; 
         np = sum(P(:, 3));  
-        total_packs = np;
         Tmax = np/3; 
         t = 0; 
 
@@ -539,18 +521,19 @@ function [Q, t_QL, lost_QL,episode_rewards, t_episodes, nw_episodes, lost_episod
         episode_rewards(iep, 1) = reward;
         t_episodes(iep) = t;
         nw_episodes(iep) = nw;
-        lost_episodes(iep) = (sum(P(:, 3))/total_packs) * 100;
 
         %Final results from the last episode
         if iep == params.Nep
             t_QL = t;
-            lost_QL = (sum(P(:, 3))/total_packs) * 100;  % unsent packets
+            if np > 0
+                lost_QL = np; 
+            end        
         end
     end
 end
 
 %% Epsilon 1
-%%{
+%{
 function plotEpsilon(params)
     epsilons = zeros(params.Nep, 1);
     for i = 1:params.Nep
@@ -564,10 +547,10 @@ function plotEpsilon(params)
     ylabel('Epsilon');
     grid on;
 end
-%%}
+%}
 
 %% Epsilon 2
-%{
+%%{
 function plotEpsilon(params)
     epsilons = zeros(params.Nep, 1);
     steepness = 8;  % Increases the inclination
@@ -584,7 +567,7 @@ function plotEpsilon(params)
     ylabel('Epsilon');
     grid on;
 end
-%}
+%%}
 %% Epsilon 3
 %{
 function plotEpsilon(params)
