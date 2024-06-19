@@ -296,7 +296,7 @@ function params = initParams()
     
     
     params.epsilon_start = 1;
-    params.epsilon_end = 0.01;
+    params.epsilon_end = 0.1;
     params.epsilon_decay = exp(log(params.epsilon_end / params.epsilon_start) / (params.Nep));
     
 
